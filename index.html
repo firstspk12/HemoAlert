@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แบบประเมินผู้ป่วยฟอกเลือด</title>
+    <!-- Tailwind CSS CDN for easy styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -70,6 +71,45 @@
             font-weight: 600;
             color: #444;
         }
+        /* Styles for the new progress bar visual indicator */
+        .progress-bar-container {
+            width: 80%; /* Adjust width as needed */
+            height: 30px;
+            background-color: #e0e0e0; /* Light gray background for the bar */
+            border-radius: 15px;
+            margin: 20px auto 10px auto;
+            overflow: hidden; /* Ensures the inner bar stays rounded */
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%; /* Initial width */
+            border-radius: 15px;
+            transition: width 0.5s ease-in-out, background-color 0.5s ease-in-out;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1em;
+            font-weight: 700;
+        }
+        .progress-bar-fill.low-risk-bar {
+            background-color: #28a745; /* Green */
+        }
+        .progress-bar-fill.medium-risk-bar {
+            background-color: #ffc107; /* Orange */
+            color: #333; /* Darker text for orange background */
+        }
+        .progress-bar-fill.high-risk-bar {
+            background-color: #dc3545; /* Red */
+        }
+        .risk-category-text {
+            font-size: 1.1em;
+            font-weight: 600;
+            margin-top: 10px;
+            color: #333;
+        }
+        /* End new styles */
+
         .recommendation-display {
             background-color: #e6ffe6; /* Light green for recommendations */
             border: 1px solid #c6ecc6;
@@ -284,7 +324,13 @@
         </div>
 
         <div class="score-display">
-            <p>คะแนนรวม (EWS + Soft Sign Signal): <span id="totalScore">0</span></p>
+            <p>คะแนนรวม (EWS + Soft Sign Signal): <span id="totalScore">0</span> / 20</p>
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progressBarFill">
+                    <span id="progressBarText">0%</span>
+                </div>
+            </div>
+            <p id="riskCategoryText" class="risk-category-text">ยังไม่มีการประเมิน</p>
         </div>
 
         <div id="recommendationDisplay" class="recommendation-display">
@@ -298,12 +344,14 @@
         </div>
     </div>
 
+    <!-- jsPDF and html2canvas CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <script type="module">
         // Make jsPDF globally available for the module script
         const { jsPDF } = window.jspdf;
+        const MAX_SCORE = 20; // Maximum possible score (10 sections * 2 points/section)
 
         // Function to calculate the total score and display recommendations
         function calculateScore() {
@@ -334,11 +382,24 @@
 
             document.getElementById('totalScore').textContent = totalScore;
 
-            // Display recommendations based on total score
+            // Update Progress Bar
+            const progressBarFill = document.getElementById('progressBarFill');
+            const progressBarText = document.getElementById('progressBarText');
+            const percentage = (totalScore / MAX_SCORE) * 100;
+            progressBarFill.style.width = `${percentage}%`;
+            progressBarText.textContent = `${totalScore} (${percentage.toFixed(0)}%)`;
+
+            // Display recommendations and update risk category text
             const recommendationDisplay = document.getElementById('recommendationDisplay');
             const recommendationText = document.getElementById('recommendationText');
+            const riskCategoryTextElement = document.getElementById('riskCategoryText'); // Renamed for clarity
+
+            // Reset classes
+            progressBarFill.classList.remove('low-risk-bar', 'medium-risk-bar', 'high-risk-bar');
 
             if (totalScore >= 0 && totalScore <= 3) {
+                progressBarFill.classList.add('low-risk-bar');
+                riskCategoryTextElement.textContent = `หมวดหมู่: ความเสี่ยงต่ำ`;
                 recommendationText.innerHTML = `
                     <p><strong>กลุ่มผู้ป่วยความเสี่ยงต่ำ (คะแนนรวม 0-3 คะแนน)</strong></p>
                     <ul class="list-disc list-inside ml-4">
@@ -352,6 +413,8 @@
                 `;
                 recommendationDisplay.style.display = 'block';
             } else if (totalScore >= 4 && totalScore <= 6) {
+                progressBarFill.classList.add('medium-risk-bar');
+                riskCategoryTextElement.textContent = `หมวดหมู่: ความเสี่ยงปานกลาง`;
                 recommendationText.innerHTML = `
                     <p><strong>กลุ่มผู้ป่วยความเสี่ยงปานกลาง (คะแนนรวม 4-6 คะแนน)</strong></p>
                     <ul class="list-disc list-inside ml-4">
@@ -365,6 +428,8 @@
                 `;
                 recommendationDisplay.style.display = 'block';
             } else if (totalScore >= 7) {
+                progressBarFill.classList.add('high-risk-bar');
+                riskCategoryTextElement.textContent = `หมวดหมู่: ความเสี่ยงสูง`;
                 recommendationText.innerHTML = `
                     <p><strong>กลุ่มผู้ป่วยความเสี่ยงสูง (คะแนนรวม >= 7 คะแนน)</strong></p>
                     <ul class="list-disc list-inside ml-4">
@@ -383,7 +448,13 @@
                 `;
                 recommendationDisplay.style.display = 'block';
             } else {
-                recommendationDisplay.style.display = 'none'; // Hide if no recommendation applies
+                // Initial state or no selection
+                progressBarFill.style.width = '0%';
+                progressBarFill.classList.remove('low-risk-bar', 'medium-risk-bar', 'high-risk-bar');
+                progressBarText.textContent = '0%';
+                riskCategoryTextElement.textContent = 'ยังไม่มีการประเมิน';
+                recommendationDisplay.style.display = 'none';
+                recommendationText.innerHTML = '';
             }
         }
 
@@ -397,6 +468,12 @@
             document.getElementById('totalScore').textContent = '0';
             document.getElementById('recommendationDisplay').style.display = 'none'; // Hide recommendation
             document.getElementById('recommendationText').innerHTML = ''; // Clear recommendation text
+
+            // Reset progress bar
+            document.getElementById('progressBarFill').style.width = '0%';
+            document.getElementById('progressBarFill').classList.remove('low-risk-bar', 'medium-risk-bar', 'high-risk-bar');
+            document.getElementById('progressBarText').textContent = '0%';
+            document.getElementById('riskCategoryText').textContent = 'ยังไม่มีการประเมิน';
         }
 
         // Function to export to PDF
@@ -406,7 +483,10 @@
             const filename = hnValue ? `แบบประเมินผู้ป่วย-${hnValue}.pdf` : 'แบบประเมินผู้ป่วย.pdf';
 
             // Ensure the recommendation section is visible for PDF
-            document.getElementById('recommendationDisplay').style.display = 'block';
+            const recommendationWasHidden = document.getElementById('recommendationDisplay').style.display === 'none';
+            if (recommendationWasHidden) {
+                document.getElementById('recommendationDisplay').style.display = 'block';
+            }
 
             const canvas = await html2canvas(input, {
                 scale: 2, // Increase scale for better quality
@@ -438,7 +518,7 @@
             pdf.save(filename);
 
             // Hide the recommendation section again if it was hidden before PDF generation
-            if (document.getElementById('recommendationText').innerHTML === '') { // Check if it was empty before export
+            if (recommendationWasHidden) {
                 document.getElementById('recommendationDisplay').style.display = 'none';
             }
         }
@@ -446,7 +526,7 @@
 
         // Event Listeners
         document.addEventListener('DOMContentLoaded', () => {
-            // No calculate button needed, calculate on radio change
+            // Calculate score on any radio button change for real-time feedback
             const allRadios = document.querySelectorAll('input[type="radio"]');
             allRadios.forEach(radio => {
                 radio.addEventListener('change', calculateScore);
